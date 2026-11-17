@@ -1,0 +1,59 @@
+name: Build Tauri Android APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: 12266719
+
+      - name: Install NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME "ndk;26.1.10909125" "platforms;android-34" "build-tools;34.0.0"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+
+      - name: Install Node Dependencies
+        run: npm install
+
+      # Tauri প্রজেক্ট ইনিশিয়ালাইজ করা (যেহেতু Termux-এ করা যায়নি)
+      - name: Init Tauri Android
+        run: |
+          npm install -D @tauri-apps/cli
+          npx tauri init --ci --app-name "Trading App" --window-title "Trading App" --dist-dir "../dist" --dev-url "http://localhost:1420"
+          
+      - name: Init Android project
+        run: npx tauri android init --ci
+
+      - name: Build APK
+        run: npx tauri android build --apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
