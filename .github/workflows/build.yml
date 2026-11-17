@@ -1,5 +1,4 @@
 name: Build Tauri Android APK
-
 on:
   push:
     branches: [ "main" ]
@@ -40,12 +39,6 @@ jobs:
       - name: Install Node Dependencies
         run: npm install
 
-      # Tauri প্রজেক্ট ইনিশিয়ালাইজ করা (যেহেতু Termux-এ করা যায়নি)
-      - name: Init Tauri Android
-        run: |
-          npm install -D @tauri-apps/cli
-          npx tauri init --ci --app-name "Trading App" --window-title "Trading App" --dist-dir "../dist" --dev-url "http://localhost:1420"
-          
       - name: Init Android project
         run: npx tauri android init --ci
 
