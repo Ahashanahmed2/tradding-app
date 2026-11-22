@@ -1,7 +1,7 @@
 name: Build Tauri Android APK
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ] # আপনার ব্রাঞ্চের নাম (main বা master) অনুযায়ী ঠিক করে নিন
   workflow_dispatch:
 
 jobs:
@@ -42,25 +42,44 @@ jobs:
       - name: Init Android project
         run: npx tauri android init
 
-      # --- নতুন সাইনিং সেটআপ ---
+      # --- ১. কী ডিকোড করা ---
       - name: Decode Keystore
         run: |
-          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $RUNNER_TEMP/upload-keystore.jks
+          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > ${{ github.workspace }}/my-release-key.jks
 
-      - name: Create keystore.properties
-        run: |
-          cd src-tauri/gen/android
-          echo "storeFile=$RUNNER_TEMP/upload-keystore.jks" > keystore.properties
-          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> keystore.properties
-          echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
-          echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> keystore.properties
-      # ---------------------------
-
+      # --- ২. Tauri বিল্ড করা (এখানে Unsigned APK তৈরি হবে) ---
       - name: Build APK
         run: npx tauri android build --apk
 
+      # --- ৩. zipalign করা (সাইন করার আগে বাধ্যতামূলক) ---
+      - name: Zipalign APK
+        run: |
+          cd src-tauri/gen/android/app/build/outputs/apk/universal/release/
+          
+          if [ -f "app-universal-release-unsigned.apk" ]; then
+            INPUT_APK="app-universal-release-unsigned.apk"
+          else
+            INPUT_APK="app-universal-release.apk"
+          fi
+          
+          $ANDROID_HOME/build-tools/34.0.0/zipalign -v -p 4 $INPUT_APK app-universal-release-aligned.apk
+
+      # --- ৪. apksigner দিয়ে সাইন করা ---
+      - name: Sign APK
+        run: |
+          cd src-tauri/gen/android/app/build/outputs/apk/universal/release/
+          
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
+            --ks ${{ github.workspace }}/my-release-key.jks \
+            --ks-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            --key-pass pass:${{ secrets.ANDROID_KEY_PASSWORD }} \
+            --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
+            --out app-universal-release-signed.apk \
+            app-universal-release-aligned.apk
+
+      # --- ৫. সাইন করা ফাইলটি আপলোড করা ---
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-apk
-          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-signed.apk
